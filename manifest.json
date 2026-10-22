@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "GitHub Mark as Viewed",
+  "name": "My GitHub Harness",
   "version": "1.0.0",
-  "description": "Mark GitHub PR files as viewed using glob patterns",
+  "description": "Personal GitHub enhancements: bulk-mark PR files as viewed, highlight stacked PRs",
   "permissions": ["activeTab", "storage", "scripting"],
   "action": {
     "default_popup": "popup.html",

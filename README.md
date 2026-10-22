@@ -1,8 +1,8 @@
-# GitHub Mark as Viewed
+# My GitHub Harness
 
 <img src="icon.svg" width="64" align="right" alt="Extension icon">
 
-A Chrome extension that bulk-marks (or unmarks) GitHub PR files as **Viewed** using glob patterns — useful when a PR has many auto-generated or irrelevant files you want to dismiss at once.
+A personal Chrome extension of GitHub enhancements. Its main feature bulk-marks (or unmarks) GitHub PR files as **Viewed** using glob patterns — useful when a PR has many auto-generated or irrelevant files you want to dismiss at once.
 
 ## Features
 
