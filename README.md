@@ -30,6 +30,10 @@ A Chrome extension that bulk-marks (or unmarks) GitHub PR files as **Viewed** us
 
 The status line will report how many matched files were toggled. After **Mark as viewed**, the page reloads with `show-viewed-files=false` and `w=1` appended so you land on just the files left to review, with whitespace-only changes hidden. Other query params and the URL hash are preserved; the reload is skipped if both params are already set.
 
+### Keyboard shortcut
+
+Press **Alt+Shift+R** (**⌥⇧R** on Mac) on a PR's Files changed tab to run **Mark as viewed** with your saved patterns — no need to open the popup. The toolbar badge briefly shows how many files were marked (or `!` on error). Rebind it at `chrome://extensions/shortcuts`.
+
 ### Pattern rules
 
 | Pattern | Matches |

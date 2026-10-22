@@ -12,6 +12,18 @@
       "128": "icon128.png"
     }
   },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "mark-as-viewed": {
+      "suggested_key": {
+        "default": "Alt+Shift+R",
+        "mac": "Alt+Shift+R"
+      },
+      "description": "Mark files matching saved glob patterns as viewed"
+    }
+  },
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
