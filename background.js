@@ -12,6 +12,18 @@ function flashBadge(text, color) {
   setTimeout(() => chrome.action.setBadgeText({ text: '' }), 4000);
 }
 
+// Relays GitHub CLI requests from content scripts (which can't use native
+// messaging) to native/gh_host.py.
+const GH_HOST = 'com.my_github_harness.gh';
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== 'gh') return;
+  chrome.runtime.sendNativeMessage(GH_HOST, msg.request, (response) => {
+    sendResponse(chrome.runtime.lastError ? { error: chrome.runtime.lastError.message } : response);
+  });
+  return true; // async response
+});
+
 chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command !== 'mark-as-viewed') return;
   if (!tab?.url?.match(/github\.com\/.+\/pull\/\d+/)) return;

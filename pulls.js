@@ -1,4 +1,5 @@
-// Content script for PR list pages (github.com/:owner/:repo/pulls).
+// Content script for PR list pages (github.com/:owner/:repo/pulls): stack
+// highlighting and APPROVE / REAPPROVE buttons.
 // Runs on every github.com page because GitHub navigates client-side, so we
 // can't rely on a full page load landing on /pulls.
 
@@ -179,6 +180,114 @@ async function highlightStacks() {
   for (const r of collectRows(repo)) paintRow(r, stacks.get(r.number));
 }
 
+// One-click approval buttons: REAPPROVE on PRs where the user's approval was
+// dismissed (e.g. by a new push), APPROVE on bot-authored PRs not yet approved.
+// Goes through background.js to the GitHub CLI native host.
+const APPROVE_ATTR = 'data-gmav-approve';
+const APPROVABLE_TTL = 60_000;
+
+let approvable = null; // { repo, at, labels: Promise<Map<number, label>> }
+const approveState = new Map(); // "owner/repo#123" -> 'pending' | 'done' | error string
+const approveWarnings = new Map(); // "owner/repo#123" -> warning (approved, but assigning failed)
+
+function gh(request) {
+  return chrome.runtime.sendMessage({ type: 'gh', request });
+}
+
+function fetchApprovable(repo) {
+  if (!approvable || approvable.repo !== repo || Date.now() - approvable.at > APPROVABLE_TTL) {
+    approvable = {
+      repo,
+      at: Date.now(),
+      labels: gh({ action: 'approvable', repo })
+        .then((res) => {
+          if (res?.error) console.warn('[My GitHub Harness] approvable:', res.error);
+          return new Map([
+            ...(res?.approve || []).map((n) => [n, 'APPROVE']),
+            ...(res?.reapprove || []).map((n) => [n, 'REAPPROVE']),
+          ]);
+        })
+        .catch(() => new Map()),
+    };
+  }
+  return approvable.labels;
+}
+
+function renderButton(btn, state) {
+  btn.disabled = state === 'pending' || state === 'done';
+  btn.textContent = state === 'pending' ? 'Approving…' : state === 'done' ? 'Approved ✓' : btn.dataset.label;
+  btn.title =
+    state && state !== 'pending' && state !== 'done'
+      ? `Failed: ${state}`
+      : approveWarnings.get(btn.getAttribute(APPROVE_ATTR)) || '';
+  btn.style.background = state === 'done' ? 'transparent' : state && state !== 'pending' ? '#cf222e' : '#1f883d';
+  btn.style.color = state === 'done' ? '#1a7f37' : '#ffffff';
+  btn.style.cursor = btn.disabled ? 'default' : 'pointer';
+}
+
+function createButton(repo, number, label) {
+  const key = `${repo}#${number}`;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.dataset.label = label;
+  btn.setAttribute(APPROVE_ATTR, key);
+  Object.assign(btn.style, {
+    marginLeft: '8px',
+    padding: '0 8px',
+    height: '20px',
+    border: '1px solid rgba(31, 35, 40, 0.15)',
+    borderRadius: '6px',
+    fontSize: '11px',
+    fontWeight: '600',
+    lineHeight: '18px',
+    verticalAlign: 'middle',
+  });
+  renderButton(btn, approveState.get(key));
+
+  btn.addEventListener('click', async (e) => {
+    // Rows are clickable; don't open the PR.
+    e.preventDefault();
+    e.stopPropagation();
+    if (btn.disabled) return;
+
+    approveState.set(key, 'pending');
+    renderButton(btn, 'pending');
+    const res = await gh({ action: 'approve', repo, number }).catch((err) => ({ error: err.message }));
+    const state = res?.ok ? 'done' : res?.error || 'No response from gh host';
+    if (res?.warning) approveWarnings.set(key, res.warning);
+    approveState.set(key, state);
+    // The row may have re-rendered meanwhile; update whichever button is live.
+    document.querySelectorAll(`[${APPROVE_ATTR}="${key}"]`).forEach((b) => renderButton(b, state));
+  });
+  return btn;
+}
+
+let approveRunId = 0;
+const shownLabels = new Map(); // "owner/repo#123" -> label, so results outlive a refresh
+
+async function renderApproveButtons() {
+  const id = ++approveRunId;
+  const repo = pullsRepo();
+  if (!repo) return;
+
+  const labels = await fetchApprovable(repo);
+  if (id !== approveRunId) return;
+
+  for (const { number, row } of collectRows(repo)) {
+    const key = `${repo}#${number}`;
+    // Keep showing the result after approving, even once it's no longer approvable.
+    const label = labels.get(number) || (approveState.has(key) && shownLabels.get(key));
+    if (!label) continue;
+    if (row.querySelector(`[${APPROVE_ATTR}]`)) continue;
+    shownLabels.set(key, label);
+
+    const title = row.querySelector('a[data-testid="listitem-title-link"], a.js-navigation-open');
+    const anchor = row.querySelector('[class*="trailingBadgesContainer"]');
+    if (anchor) anchor.append(createButton(repo, number, label));
+    else title?.after(createButton(repo, number, label));
+  }
+}
+
 let timer = null;
 function schedule() {
   // Throttle rather than debounce: GitHub mutates the DOM constantly
@@ -187,6 +296,7 @@ function schedule() {
   timer = setTimeout(() => {
     timer = null;
     highlightStacks();
+    renderApproveButtons();
   }, 300);
 }
 

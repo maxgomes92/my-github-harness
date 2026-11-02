@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "My GitHub Harness",
   "version": "1.0.0",
-  "description": "Personal GitHub enhancements: bulk-mark PR files as viewed, highlight stacked PRs",
-  "permissions": ["activeTab", "storage", "scripting"],
+  "description": "Personal GitHub enhancements: bulk-mark PR files as viewed, highlight stacked PRs, reapprove dismissed approvals",
+  "permissions": ["activeTab", "storage", "scripting", "nativeMessaging"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

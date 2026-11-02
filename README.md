@@ -12,6 +12,7 @@ A personal Chrome extension of GitHub enhancements. Its main feature bulk-marks 
 - Patterns are saved between sessions
 - Optional visual features (toggle in the popup):
   - **Highlight stacked PRs** — on a repo's Pull requests list, PRs in the same stack (one PR targeting another's branch) get a shared color
+- **APPROVE / REAPPROVE** — on a repo's Pull requests list, one-click approval for bot PRs and for PRs where your approval was dismissed (e.g. by a new push), using the GitHub CLI (see [One-click approval](#one-click-approval))
 - After marking, reloads the diff with `?show-viewed-files=false&w=1` so viewed files are hidden and whitespace changes ignored
 
 ## Usage
@@ -46,6 +47,23 @@ Press **Alt+Shift+R** (**⌥⇧R** on Mac) on a PR's Files changed tab to run **
 | _(empty)_ | All files in the diff |
 
 Patterns without a `/` are matched against the **filename only**. Patterns containing a `/` are matched against the **full path**. Prefix a pattern with `!` to exclude matching files.
+
+## One-click approval
+
+On a repo's **Pull requests** list, some PRs get a green button next to their title:
+
+- **REAPPROVE** — your latest review is an approval that was dismissed, typically after the author pushed new commits
+- **APPROVE** — the PR was opened by a bot (e.g. Renovate, Dependabot) and you haven't approved it yet
+
+Click it to approve that PR and add yourself as an assignee. The button turns into **Approved ✓**, or red with the error on hover if it failed. If the approval went through but assigning didn't, it still shows **Approved ✓** with the reason on hover. The list of approvable PRs is refreshed at most once a minute.
+
+This goes through your local [GitHub CLI](https://cli.github.com/) (`gh pr review --approve`), using your existing `gh auth login` — no token is stored in the extension. Chrome reaches `gh` through a native messaging host, which needs a one-time install:
+
+1. Make sure `gh` is installed and logged in (`gh auth status`)
+2. Copy the extension's ID from `chrome://extensions`
+3. Run `native/install.sh <extension-id>`
+
+The ID of an unpacked extension is tied to its directory; if you move it, re-run the install script with the new ID.
 
 ## Installation
 
