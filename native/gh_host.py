@@ -7,6 +7,7 @@
 #   {"action": "approvable", "repo": "owner/repo"}               -> {"reapprove": [...], "approve": [...]}
 #   {"action": "approve",    "repo": "owner/repo", "number": 123} -> {"ok": true, "warning"?: str}
 #     (approves, then adds the user as an assignee)
+#   {"action": "branches",   "repo": "owner/repo"}               -> {"prs": [{"number", "base", "head"}]}
 
 import json
 import os
@@ -65,6 +66,26 @@ def approvable(repo):
     return {"reapprove": reapprove, "approve": approve}
 
 
+def branches(repo):
+    """Base/head branch of every open PR, for stack detection. Fork PRs get
+    head None: their head branch lives in another repo, so no PR here can
+    target it, even if the names match."""
+    prs = json.loads(
+        gh("pr", "list", "-R", repo, "--state", "open", "--limit", "1000",
+           "--json", "number,baseRefName,headRefName,isCrossRepository")
+    )
+    return {
+        "prs": [
+            {
+                "number": pr["number"],
+                "base": pr["baseRefName"],
+                "head": None if pr["isCrossRepository"] else pr["headRefName"],
+            }
+            for pr in prs
+        ]
+    }
+
+
 def approve(repo, number):
     """Approve, then assign the user. Returns a warning if only assigning failed."""
     gh("pr", "review", str(number), "-R", repo, "--approve")
@@ -84,6 +105,8 @@ def main():
             raise RuntimeError("GitHub CLI (gh) not found")
         if msg.get("action") == "approvable":
             send_message(approvable(msg["repo"]))
+        elif msg.get("action") == "branches":
+            send_message(branches(msg["repo"]))
         elif msg.get("action") == "approve":
             warning = approve(msg["repo"], int(msg["number"]))
             send_message({"ok": True, "warning": warning} if warning else {"ok": True})

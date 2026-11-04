@@ -11,7 +11,7 @@ A personal Chrome extension of GitHub enhancements. Its main feature bulk-marks 
 - Works with GitHub's current and legacy PR diff UI
 - Patterns are saved between sessions
 - Optional visual features (toggle in the popup):
-  - **Highlight stacked PRs** — on a repo's Pull requests list, PRs in the same stack (one PR targeting another's branch) get a shared color
+  - **Highlight stacked PRs** — on a repo's Pull requests list, PRs in the same stack (one PR targeting another's branch) get a shared color. With the [GitHub CLI host](#one-click-approval) installed, branches for all open PRs come from a single `gh pr list` call, so colors appear almost instantly and stay consistent across pages; without it, each PR page is fetched instead
 - **APPROVE / REAPPROVE** — on a repo's Pull requests list, one-click approval for bot PRs and for PRs where your approval was dismissed (e.g. by a new push), using the GitHub CLI (see [One-click approval](#one-click-approval))
 - After marking, reloads the diff with `?show-viewed-files=false&w=1` so viewed files are hidden and whitespace changes ignored
 

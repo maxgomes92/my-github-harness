@@ -47,8 +47,31 @@ function collectRows(repo) {
   return rows;
 }
 
-// Fetch a PR page (same-origin, so it works for private repos) and pull the
-// base/head branch names out of it.
+// Base/head branches of every open PR in the repo, from one `gh pr list` call
+// via the native host. Covering the whole repo (not just this page) means
+// stacks split across pages still link up and keep the same color.
+const BRANCHES_TTL = 60_000;
+let repoBranches = null; // { repo, at, prs: Promise<Map<number, { number, base, head }>> }
+
+function fetchRepoBranches(repo) {
+  if (!repoBranches || repoBranches.repo !== repo || Date.now() - repoBranches.at > BRANCHES_TTL) {
+    repoBranches = {
+      repo,
+      at: Date.now(),
+      prs: gh({ action: 'branches', repo })
+        .then((res) => {
+          if (res?.error) console.warn('[My GitHub Harness] branches:', res.error);
+          return new Map((res?.prs || []).map((pr) => [pr.number, pr]));
+        })
+        .catch(() => new Map()),
+    };
+  }
+  return repoBranches.prs;
+}
+
+// Fallback when gh doesn't cover a row (host not installed, or the PR was
+// opened since the last refresh): fetch the PR page (same-origin, so it works
+// for private repos) and pull the base/head branch names out of it.
 function fetchBranches(repo, number) {
   const key = `${repo}#${number}`;
   if (!branchCache.has(key)) {
@@ -101,9 +124,10 @@ async function mapLimit(items, limit, fn) {
 }
 
 // Group PRs into stacks: a PR belongs to the same stack as the PR whose head
-// branch it targets. Returns Map<number, color>.
+// branch it targets. Fork PRs have a null head and never act as a parent.
+// Returns Map<number, color>.
 function computeStacks(prs) {
-  const byHead = new Map(prs.map((pr) => [pr.head, pr]));
+  const byHead = new Map(prs.filter((pr) => pr.head).map((pr) => [pr.head, pr]));
   const parentOf = (pr) => (pr.base !== pr.head ? byHead.get(pr.base) : undefined);
 
   // Union-find over PR numbers.
@@ -168,12 +192,17 @@ async function highlightStacks() {
   }
 
   const rows = collectRows(repo);
-  const branches = await mapLimit(rows, 6, (r) => fetchBranches(repo, r.number));
+  const known = await fetchRepoBranches(repo);
   if (id !== runId) return; // a newer pass superseded this one
 
-  const prs = rows
-    .map((r, i) => branches[i] && { number: r.number, ...branches[i] })
-    .filter(Boolean);
+  const missing = rows.filter((r) => !known.has(r.number));
+  const scraped = await mapLimit(missing, 6, (r) => fetchBranches(repo, r.number));
+  if (id !== runId) return;
+
+  const prs = [
+    ...known.values(),
+    ...missing.map((r, i) => scraped[i] && { number: r.number, ...scraped[i] }).filter(Boolean),
+  ];
   const stacks = computeStacks(prs);
 
   // Re-collect: the list may have re-rendered while we were fetching.
