@@ -12,7 +12,7 @@ A personal Chrome extension of GitHub enhancements. Its main feature bulk-marks 
 - Patterns are saved between sessions
 - Optional visual features (toggle in the popup):
   - **Highlight stacked PRs** — on a repo's Pull requests list, PRs in the same stack (one PR targeting another's branch) get a shared color. With the [GitHub CLI host](#one-click-approval) installed, branches for all open PRs come from a single `gh pr list` call, so colors appear almost instantly and stay consistent across pages; without it, each PR page is fetched instead
-- **APPROVE / REAPPROVE** — on a repo's Pull requests list, one-click approval for bot PRs and for PRs where your approval was dismissed (e.g. by a new push), using the GitHub CLI (see [One-click approval](#one-click-approval))
+- **APPROVE / REAPPROVE** — on a repo's Pull requests list, one-click approval for bot PRs, PRs assigned to you, and PRs that changed since you reviewed them, using the GitHub CLI (see [One-click approval](#one-click-approval))
 - After marking, reloads the diff with `?show-viewed-files=false&w=1` so viewed files are hidden and whitespace changes ignored
 
 ## Usage
@@ -52,10 +52,12 @@ Patterns without a `/` are matched against the **filename only**. Patterns conta
 
 On a repo's **Pull requests** list, some PRs get a green button next to their title:
 
-- **REAPPROVE** — your latest review is an approval that was dismissed, typically after the author pushed new commits
-- **APPROVE** — the PR was opened by a bot (e.g. Renovate, Dependabot) and you haven't approved it yet
+- **REAPPROVE** — you reviewed it (approved, requested changes or commented), but commits were pushed since, or your approval was dismissed
+- **APPROVE** — the PR was opened by a bot (e.g. Renovate, Dependabot) or is assigned to you, and you haven't reviewed it yet
 
 Click it to approve that PR and add yourself as an assignee. The button turns into **Approved ✓**, or red with the error on hover if it failed. If the approval went through but assigning didn't, it still shows **Approved ✓** with the reason on hover. The list of approvable PRs is refreshed at most once a minute.
+
+Other people's PRs you've reviewed and that haven't changed since get a badge with your latest review instead: **Approved**, **Changes requested** or **Commented**.
 
 This goes through your local [GitHub CLI](https://cli.github.com/) (`gh pr review --approve`), using your existing `gh auth login` — no token is stored in the extension. Chrome reaches `gh` through a native messaging host, which needs a one-time install:
 

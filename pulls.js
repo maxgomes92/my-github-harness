@@ -209,13 +209,16 @@ async function highlightStacks() {
   for (const r of collectRows(repo)) paintRow(r, stacks.get(r.number));
 }
 
-// One-click approval buttons: REAPPROVE on PRs where the user's approval was
-// dismissed (e.g. by a new push), APPROVE on bot-authored PRs not yet approved.
+// One-click approval buttons: REAPPROVE on PRs the user reviewed before the
+// latest push (or whose approval was dismissed), APPROVE on bot-authored or
+// assigned PRs they haven't reviewed, and otherwise a badge with their review
+// status.
 // Goes through background.js to the GitHub CLI native host.
 const APPROVE_ATTR = 'data-gmav-approve';
+const STATUS_ATTR = 'data-gmav-review-status';
 const APPROVABLE_TTL = 60_000;
 
-let approvable = null; // { repo, at, labels: Promise<Map<number, label>> }
+let approvable = null; // { repo, at, result: Promise<{ labels: Map<number, label>, reviews: Map<number, { state }> }> }
 const approveState = new Map(); // "owner/repo#123" -> 'pending' | 'done' | error string
 const approveWarnings = new Map(); // "owner/repo#123" -> warning (approved, but assigning failed)
 
@@ -228,18 +231,47 @@ function fetchApprovable(repo) {
     approvable = {
       repo,
       at: Date.now(),
-      labels: gh({ action: 'approvable', repo })
+      result: gh({ action: 'approvable', repo })
         .then((res) => {
           if (res?.error) console.warn('[My GitHub Harness] approvable:', res.error);
-          return new Map([
-            ...(res?.approve || []).map((n) => [n, 'APPROVE']),
-            ...(res?.reapprove || []).map((n) => [n, 'REAPPROVE']),
-          ]);
+          return {
+            labels: new Map([
+              ...(res?.approve || []).map((n) => [n, 'APPROVE']),
+              ...(res?.reapprove || []).map((n) => [n, 'REAPPROVE']),
+            ]),
+            reviews: new Map(Object.entries(res?.reviews || {}).map(([n, r]) => [Number(n), r])),
+          };
         })
-        .catch(() => new Map()),
+        .catch(() => ({ labels: new Map(), reviews: new Map() })),
     };
   }
-  return approvable.labels;
+  return approvable.result;
+}
+
+const REVIEW_STATUS = {
+  APPROVED: { text: 'Approved', color: '#1a7f37' },
+  CHANGES_REQUESTED: { text: 'Changes requested', color: '#cf222e' },
+  COMMENTED: { text: 'Commented', color: '#8c959f' },
+};
+
+function createStatus(review) {
+  const { text, color } = REVIEW_STATUS[review.state] || { text: review.state, color: '#8c959f' };
+  const badge = document.createElement('span');
+  badge.textContent = text;
+  badge.title = 'Your latest review';
+  Object.assign(badge.style, {
+    marginLeft: '8px',
+    padding: '0 7px',
+    border: `1px solid ${color}`,
+    borderRadius: '2em',
+    color,
+    fontSize: '11px',
+    fontWeight: '600',
+    lineHeight: '18px',
+    verticalAlign: 'middle',
+    whiteSpace: 'nowrap',
+  });
+  return badge;
 }
 
 function renderButton(btn, state) {
@@ -299,21 +331,41 @@ async function renderApproveButtons() {
   const repo = pullsRepo();
   if (!repo) return;
 
-  const labels = await fetchApprovable(repo);
+  const { labels, reviews } = await fetchApprovable(repo);
   if (id !== approveRunId) return;
 
   for (const { number, row } of collectRows(repo)) {
     const key = `${repo}#${number}`;
-    // Keep showing the result after approving, even once it's no longer approvable.
-    const label = labels.get(number) || (approveState.has(key) && shownLabels.get(key));
-    if (!label) continue;
-    if (row.querySelector(`[${APPROVE_ATTR}]`)) continue;
-    shownLabels.set(key, label);
-
     const title = row.querySelector('a[data-testid="listitem-title-link"], a.js-navigation-open');
     const anchor = row.querySelector('[class*="trailingBadgesContainer"]');
-    if (anchor) anchor.append(createButton(repo, number, label));
-    else title?.after(createButton(repo, number, label));
+    const place = (el) => (anchor ? anchor.append(el) : title?.after(el));
+
+    // Keep showing the result after approving, even once it's no longer approvable.
+    const label = labels.get(number) || (approveState.has(key) && shownLabels.get(key));
+
+    // The button already says where things stand ("Approved ✓" once clicked),
+    // so the review badge only shows on rows without one.
+    const review = label ? null : reviews.get(number);
+    const status = row.querySelector(`[${STATUS_ATTR}]`);
+    const statusKey = review?.state ?? null;
+    if (status?.getAttribute(STATUS_ATTR) !== statusKey) {
+      status?.remove();
+      if (review) {
+        const badge = createStatus(review);
+        badge.setAttribute(STATUS_ATTR, statusKey);
+        place(badge);
+      }
+    }
+
+    const existing = row.querySelector(`[${APPROVE_ATTR}]`);
+    if (!label) {
+      // Approved since the button was added (e.g. in another tab, or on GitHub).
+      existing?.remove();
+      continue;
+    }
+    if (existing) continue;
+    shownLabels.set(key, label);
+    place(createButton(repo, number, label));
   }
 }
 

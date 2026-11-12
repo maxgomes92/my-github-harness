@@ -4,7 +4,7 @@
 # per message, passing a length-prefixed JSON request on stdin.
 #
 # Requests:
-#   {"action": "approvable", "repo": "owner/repo"}               -> {"reapprove": [...], "approve": [...]}
+#   {"action": "approvable", "repo": "owner/repo"}               -> {"reapprove": [...], "approve": [...], "reviews": {...}}
 #   {"action": "approve",    "repo": "owner/repo", "number": 123} -> {"ok": true, "warning"?: str}
 #     (approves, then adds the user as an assignee)
 #   {"action": "branches",   "repo": "owner/repo"}               -> {"prs": [{"number", "base", "head"}]}
@@ -48,22 +48,43 @@ def gh(*args):
 
 
 def approvable(repo):
-    """Open PRs worth a one-click approval:
-    reapprove: the user's latest review is an approval that got dismissed.
-    approve:   authored by a bot and not yet approved by the user."""
+    """Open PRs by others worth a one-click approval, plus the user's own
+    review status (PRs authored by the user are skipped: you can't approve
+    your own PR, and replying to comments on it counts as a review):
+    reapprove: the user reviewed it, but commits were pushed since, or their
+               approval got dismissed.
+    approve:   not reviewed by the user yet, and authored by a bot or
+               assigned to the user.
+    reviews:   {number: {"state": ...}} for the remaining PRs the user has
+               reviewed. state is their latest verdict (APPROVED,
+               CHANGES_REQUESTED), or COMMENTED if they only commented."""
     me = gh("api", "user", "-q", ".login").strip()
     prs = json.loads(
         gh("pr", "list", "-R", repo, "--state", "open", "--limit", "1000",
-           "--json", "number,author,latestReviews")
+           "--json", "number,author,assignees,headRefOid,reviews")
     )
-    reapprove, approve = [], []
+    reapprove, approve, reviews = [], [], {}
     for pr in prs:
-        mine = [r["state"] for r in pr["latestReviews"] if r["author"]["login"] == me]
-        if "DISMISSED" in mine:
+        if pr["author"]["login"] == me:
+            continue
+        mine = [
+            r for r in pr["reviews"]
+            if r["author"]["login"] == me and r["state"] != "PENDING"
+        ]
+        if not mine:
+            if pr["author"].get("is_bot") or any(a["login"] == me for a in pr["assignees"]):
+                approve.append(pr["number"])
+            continue
+        # Comment-only reviews don't undo an earlier verdict, so the verdict
+        # is the latest non-comment review.
+        verdicts = [r["state"] for r in mine if r["state"] != "COMMENTED"]
+        verdict = verdicts[-1] if verdicts else "COMMENTED"
+        stale = (mine[-1].get("commit") or {}).get("oid") != pr["headRefOid"]
+        if stale or verdict == "DISMISSED":
             reapprove.append(pr["number"])
-        elif pr["author"].get("is_bot") and "APPROVED" not in mine:
-            approve.append(pr["number"])
-    return {"reapprove": reapprove, "approve": approve}
+        else:
+            reviews[pr["number"]] = {"state": verdict}
+    return {"reapprove": reapprove, "approve": approve, "reviews": reviews}
 
 
 def branches(repo):
