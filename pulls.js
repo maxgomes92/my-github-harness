@@ -369,6 +369,32 @@ async function renderApproveButtons() {
   }
 }
 
+// Make room for the badges and buttons: hide GitHub's review column, and let
+// long titles truncate instead of pushing everything after them out of view.
+const LAYOUT_ATTR = 'data-gmav-pulls';
+const layoutStyle = document.createElement('style');
+layoutStyle.textContent = `
+  html[${LAYOUT_ATTR}] [class*="metadataReview"] { display: none !important; }
+  html[${LAYOUT_ATTR}] li > [class*="container"]:has(> h3 + [class*="trailingBadgesContainer"]) {
+    display: flex !important;
+    align-items: center;
+  }
+  html[${LAYOUT_ATTR}] li > [class*="container"] > h3:has(+ [class*="trailingBadgesContainer"]) {
+    flex-shrink: 1 !important;
+    min-width: 0;
+    text-overflow: ellipsis;
+  }
+  html[${LAYOUT_ATTR}] [class*="trailingBadgesContainer"] {
+    flex-shrink: 0;
+    overflow: visible !important;
+  }
+`;
+document.documentElement.append(layoutStyle);
+
+function updateLayout() {
+  document.documentElement.toggleAttribute(LAYOUT_ATTR, Boolean(pullsRepo()));
+}
+
 let timer = null;
 function schedule() {
   // Throttle rather than debounce: GitHub mutates the DOM constantly
@@ -376,6 +402,7 @@ function schedule() {
   if (timer) return;
   timer = setTimeout(() => {
     timer = null;
+    updateLayout();
     highlightStacks();
     renderApproveButtons();
   }, 300);
