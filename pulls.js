@@ -1,5 +1,5 @@
 // Content script for PR list pages (github.com/:owner/:repo/pulls): stack
-// highlighting and APPROVE / REAPPROVE buttons.
+// highlighting, APPROVE / REAPPROVE buttons and highlighting your own PRs.
 // Runs on every github.com page because GitHub navigates client-side, so we
 // can't rely on a full page load landing on /pulls.
 
@@ -369,6 +369,31 @@ async function renderApproveButtons() {
   }
 }
 
+// Highlight the author name on PRs opened by the logged-in user.
+const MINE_ATTR = 'data-gmav-mine';
+
+function viewerLogin() {
+  return document.querySelector('meta[name="user-login"]')?.content || null;
+}
+
+function highlightMine() {
+  const repo = pullsRepo();
+  const login = viewerLogin()?.toLowerCase();
+  const marked = new Set();
+
+  if (repo && login) {
+    for (const { row } of collectRows(repo)) {
+      // The author link is the only one in the row whose text is a bare login.
+      for (const a of row.querySelectorAll('a:not([data-testid="listitem-title-link"]):not(.js-navigation-open)')) {
+        if (a.textContent.trim().toLowerCase() !== login) continue;
+        a.setAttribute(MINE_ATTR, '');
+        marked.add(a);
+      }
+    }
+  }
+  document.querySelectorAll(`[${MINE_ATTR}]`).forEach((a) => marked.has(a) || a.removeAttribute(MINE_ATTR));
+}
+
 // Make room for the badges and buttons: hide GitHub's review column, and let
 // long titles truncate instead of pushing everything after them out of view.
 const LAYOUT_ATTR = 'data-gmav-pulls';
@@ -388,6 +413,13 @@ layoutStyle.textContent = `
     flex-shrink: 0;
     overflow: visible !important;
   }
+  [${MINE_ATTR}] {
+    padding: 0 5px;
+    border-radius: 2em;
+    background: color-mix(in srgb, #d4b11a 30%, transparent);
+    color: inherit !important;
+    font-weight: 600;
+  }
 `;
 document.documentElement.append(layoutStyle);
 
@@ -405,6 +437,7 @@ function schedule() {
     updateLayout();
     highlightStacks();
     renderApproveButtons();
+    highlightMine();
   }, 300);
 }
 
