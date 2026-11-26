@@ -7,6 +7,8 @@
 #   {"action": "approvable", "repo": "owner/repo"}               -> {"reapprove": [...], "approve": [...], "reviews": {...}}
 #   {"action": "approve",    "repo": "owner/repo", "number": 123} -> {"ok": true, "warning"?: str}
 #     (approves, then adds the user as an assignee)
+#   {"action": "assign",     "repo": "owner/repo", "number": 123} -> {"ok": true}
+#     (adds the user as an assignee)
 #   {"action": "branches",   "repo": "owner/repo"}               -> {"prs": [{"number", "base", "head"}]}
 
 import json
@@ -128,6 +130,9 @@ def main():
             send_message(approvable(msg["repo"]))
         elif msg.get("action") == "branches":
             send_message(branches(msg["repo"]))
+        elif msg.get("action") == "assign":
+            gh("pr", "edit", str(int(msg["number"])), "-R", msg["repo"], "--add-assignee", "@me")
+            send_message({"ok": True})
         elif msg.get("action") == "approve":
             warning = approve(msg["repo"], int(msg["number"]))
             send_message({"ok": True, "warning": warning} if warning else {"ok": True})

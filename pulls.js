@@ -394,6 +394,92 @@ function highlightMine() {
   document.querySelectorAll(`[${MINE_ATTR}]`).forEach((a) => marked.has(a) || a.removeAttribute(MINE_ATTR));
 }
 
+// "Assign me" button in place of GitHub's "—" placeholder on PRs with no
+// assignee. Goes through the GitHub CLI native host like approving does.
+const ASSIGN_ATTR = 'data-gmav-assign';
+const PLACEHOLDER_ATTR = 'data-gmav-placeholder';
+const assignState = new Map(); // "owner/repo#123" -> 'pending' | 'done' | error string
+
+const PERSON_ADD_ICON =
+  '<svg viewBox="0 0 16 16" width="12" height="12" style="margin-left:1px" fill="currentColor" aria-hidden="true">' +
+  '<path d="M7.9 8.548h-.001a5.528 5.528 0 0 1 3.1 4.659.75.75 0 1 1-1.498.086A4.01 4.01 0 0 0 5.5 9.5a4.01 4.01 0 0 0-4.001 3.793.75.75 0 1 1-1.498-.085 5.527 5.527 0 0 1 3.1-4.66 3.5 3.5 0 1 1 4.799 0ZM13.25 0a.75.75 0 0 1 .75.75V2h1.25a.75.75 0 0 1 0 1.5H14v1.25a.75.75 0 0 1-1.5 0V3.5h-1.25a.75.75 0 0 1 0-1.5h1.25V.75a.75.75 0 0 1 .75-.75ZM5.5 4a2 2 0 1 0-.001 3.999A2 2 0 0 0 5.5 4Z"/></svg>';
+
+function renderAssignButton(btn, state) {
+  btn.disabled = state === 'pending' || state === 'done';
+  btn.dataset.state = state === 'pending' || state === 'done' ? state : state ? 'error' : 'idle';
+  btn.title =
+    state === 'done'
+      ? 'Assigned to you'
+      : state === 'pending'
+        ? 'Assigning…'
+        : state
+          ? `Failed: ${state}`
+          : 'Assign yourself';
+
+  if (state === 'done') {
+    const login = viewerLogin();
+    btn.innerHTML = login
+      ? `<img src="https://github.com/${encodeURIComponent(login)}.png?size=40" alt="" width="20" height="20">`
+      : '✓';
+  } else if (state === 'pending') {
+    btn.innerHTML = '<span class="gmav-spinner"></span>';
+  } else {
+    btn.innerHTML = PERSON_ADD_ICON;
+  }
+}
+
+function createAssignButton(repo, number) {
+  const key = `${repo}#${number}`;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'gmav-assign';
+  btn.setAttribute(ASSIGN_ATTR, key);
+  renderAssignButton(btn, assignState.get(key));
+
+  btn.addEventListener('click', async (e) => {
+    // Rows are clickable; don't open the PR.
+    e.preventDefault();
+    e.stopPropagation();
+    if (btn.disabled) return;
+
+    assignState.set(key, 'pending');
+    renderAssignButton(btn, 'pending');
+    const res = await gh({ action: 'assign', repo, number }).catch((err) => ({ error: err.message }));
+    const state = res?.ok ? 'done' : res?.error || 'No response from gh host';
+    assignState.set(key, state);
+    document.querySelectorAll(`[${ASSIGN_ATTR}="${key}"]`).forEach((b) => renderAssignButton(b, state));
+    // Being assigned can make the PR approvable; refresh the buttons.
+    if (state === 'done') {
+      approvable = null;
+      schedule();
+    }
+  });
+  return btn;
+}
+
+function renderAssignButtons() {
+  const repo = pullsRepo();
+  if (!repo) return;
+
+  for (const { number, row } of collectRows(repo)) {
+    const cell = row.querySelector('[class*="metadataAssignees"]');
+    if (!cell) continue;
+    const key = `${repo}#${number}`;
+    const placeholder = cell.querySelector('[class*="emptyPlaceholder"]');
+    const existing = cell.querySelector(`[${ASSIGN_ATTR}]`);
+
+    if (!placeholder) {
+      // GitHub now shows real assignees (e.g. after a refresh).
+      existing?.remove();
+      continue;
+    }
+    if (existing) continue;
+    // Hide rather than remove: React owns the placeholder.
+    placeholder.setAttribute(PLACEHOLDER_ATTR, '');
+    cell.append(createAssignButton(repo, number));
+  }
+}
+
 // Make room for the badges and buttons: hide GitHub's review column, and let
 // long titles truncate instead of pushing everything after them out of view.
 const LAYOUT_ATTR = 'data-gmav-pulls';
@@ -420,6 +506,58 @@ layoutStyle.textContent = `
     color: inherit !important;
     font-weight: 600;
   }
+  [${PLACEHOLDER_ATTR}] { display: none !important; }
+  .gmav-assign {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px dashed var(--borderColor-default, #d0d7de);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--fgColor-muted, #656d76);
+    line-height: 0;
+    cursor: pointer;
+    opacity: 0.75;
+    transition: opacity 120ms, background-color 120ms, border-color 120ms, color 120ms;
+  }
+  li:hover .gmav-assign { opacity: 1; }
+  .gmav-assign[data-state="idle"]:hover,
+  .gmav-assign[data-state="idle"]:focus-visible {
+    border-style: solid;
+    border-color: #1f883d;
+    background: #1f883d;
+    color: #ffffff;
+  }
+  .gmav-assign[data-state="error"] {
+    border-style: solid;
+    border-color: #cf222e;
+    color: #cf222e;
+    opacity: 1;
+  }
+  .gmav-assign[data-state="pending"] { cursor: default; opacity: 1; }
+  .gmav-assign[data-state="done"] {
+    padding: 0;
+    border: none;
+    cursor: default;
+    opacity: 1;
+  }
+  .gmav-assign img {
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px #1f883d;
+  }
+  .gmav-spinner {
+    width: 10px;
+    height: 10px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: gmav-spin 0.7s linear infinite;
+  }
+  @keyframes gmav-spin { to { transform: rotate(360deg); } }
 `;
 document.documentElement.append(layoutStyle);
 
@@ -437,6 +575,7 @@ function schedule() {
     updateLayout();
     highlightStacks();
     renderApproveButtons();
+    renderAssignButtons();
     highlightMine();
   }, 300);
 }
