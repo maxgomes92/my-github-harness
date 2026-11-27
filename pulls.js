@@ -249,7 +249,7 @@ function fetchApprovable(repo) {
 }
 
 const REVIEW_STATUS = {
-  APPROVED: { text: 'Approved', color: '#1a7f37' },
+  APPROVED: { text: 'Approved ✓', color: '#1a7f37' },
   CHANGES_REQUESTED: { text: 'Changes requested', color: '#cf222e' },
   COMMENTED: { text: 'Commented', color: '#8c959f' },
 };

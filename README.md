@@ -59,7 +59,7 @@ Click it to approve that PR and add yourself as an assignee. The button turns in
 
 PRs with no assignee get an assign-me icon button in the Assignees column instead of the "—" placeholder: click it to assign yourself (`gh pr edit --add-assignee @me`). It turns into your avatar once done, or red with the error on hover (click to retry).
 
-Other people's PRs you've reviewed and that haven't changed since get a badge with your latest review instead: **Approved**, **Changes requested** or **Commented**.
+Other people's PRs you've reviewed and that haven't changed since get a badge with your latest review instead: **Approved ✓**, **Changes requested** or **Commented**.
 
 This goes through your local [GitHub CLI](https://cli.github.com/) (`gh pr review --approve`), using your existing `gh auth login` — no token is stored in the extension. Chrome reaches `gh` through a native messaging host, which needs a one-time install:
 
